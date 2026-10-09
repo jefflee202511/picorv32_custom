@@ -3,14 +3,14 @@
 //
 // Usage: in firmware.c, just above main(), add
 //     #include "shell.c"
-// and call shell_run() from a menu entry. picofs.c must be in the same
-// directory; this file includes it.
+// and call shell_run() from a menu entry. picofs.c and pico_vi.c must be
+// in the same directory; this file includes them.
 //
 // Sections:
 //   1. shell core        line editor, parser, dispatcher
 //   2. basic commands    help echo peek poke dump led delay reboot exit
 //   3. flash commands    flash fldbg
-//   4. file commands     ls save cat rm run format
+//   4. file commands     ls save cat rm vi run format
 //   5. command list      which command tables are part of the shell
 //
 // To add a command: write  static int shcmd_xxx(int argc, char **argv)
@@ -623,11 +623,15 @@ static int shcmd_run(int argc, char **argv)
 	return 0;
 }
 
+// The editor: defines shcmd_vi().
+#include "pico_vi.c"
+
 const struct shell_cmd shell_fs_cmds[] = {
 	{ "ls",     shcmd_ls,     "ls                       list files in flash" },
 	{ "save",   shcmd_save,   "save <name>              type a text file into flash" },
 	{ "cat",    shcmd_cat,    "cat <name>               print a file" },
 	{ "rm",     shcmd_rm,     "rm <name>                delete a file" },
+	{ "vi",     shcmd_vi,     "vi <name>                edit a file (pico_vi.c)" },
 	{ "run",    shcmd_run,    "run <name>               execute a file as commands" },
 	{ "format", shcmd_format, "format                   erase all files" },
 	{ 0, 0, 0 }

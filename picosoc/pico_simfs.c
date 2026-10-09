@@ -4,7 +4,7 @@
 // Runs the unmodified shell.c and picofs.c on a PC. The SPI flash is simulated in RAM,
 // so nothing is ever written to a real flash chip.
 //
-// Build:   gcc -Wall -o pico_simfs pico_simfs.c    (shell.c and picofs.c in the same directory)
+// Build:   gcc -Wall -o pico_simfs pico_simfs.c    (shell.c, picofs.c, pico_vi.c in the same directory)
 // Run:     ./pico_simfs             keeps the flash contents in pfs_flash.img
 //          ./pico_simfs other.img   use another image file
 //          ./pico_simfs -           no image file (contents lost on exit)
@@ -182,6 +182,21 @@ static int sim_key_pressed(void)
 	if (read(STDIN_FILENO, &c, 1) != 1)
 		exit(0);
 	return 1;
+}
+
+// Like reading the UART register: the next input byte, or -1 if there is
+// none. Waits up to 1 ms so that a loop around it does not spin the PC.
+static int32_t sim_uart_try(void)
+{
+	struct pollfd p = { STDIN_FILENO, POLLIN, 0 };
+	unsigned char c;
+
+	sim_need_flash("terminal input");
+	if (poll(&p, 1, 1) <= 0)
+		return -1;
+	if (read(STDIN_FILENO, &c, 1) != 1)
+		exit(0);
+	return c;
 }
 
 // ---------------- memory-mapped registers (peek / poke / led) ----------------
@@ -386,6 +401,8 @@ static uint8_t sim_spi_rd(void)
 #define PORT_REBOOT()         sim_reboot()
 #define PORT_CYCLES()         sim_cycles()
 #define PORT_KEY_PRESSED()    sim_key_pressed()
+#define PORT_UART_TRY()       sim_uart_try()
+#define VI_ESC_SPINS          30        /* sim_uart_try() waits 1 ms per call */
 
 #include "shell.c"
 
