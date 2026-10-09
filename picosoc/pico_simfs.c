@@ -48,6 +48,7 @@
 #include <unistd.h>
 #include <termios.h>
 #include <time.h>
+#include <poll.h>
 
 #define SIM_BASE   0x00200000u          // must match PFS_BASE in picofs.c
 #define SIM_SIZE   (8 * 4096)           // must match PFS_SLOTS * PFS_SECTOR
@@ -166,6 +167,21 @@ static void sim_reboot(void)
 {
 	fprintf(stderr, "[sim] reboot: the firmware would restart here\r\n");
 	exit(0);
+}
+
+// Non-blocking check for input, like reading -1 from the UART register on
+// the board. A waiting byte is consumed.
+static int sim_key_pressed(void)
+{
+	struct pollfd p = { STDIN_FILENO, POLLIN, 0 };
+	unsigned char c;
+
+	sim_need_flash("terminal input");
+	if (poll(&p, 1, 0) <= 0)
+		return 0;
+	if (read(STDIN_FILENO, &c, 1) != 1)
+		exit(0);
+	return 1;
 }
 
 // ---------------- memory-mapped registers (peek / poke / led) ----------------
@@ -369,6 +385,7 @@ static uint8_t sim_spi_rd(void)
 #define PORT_IN_RAM(fn)       1
 #define PORT_REBOOT()         sim_reboot()
 #define PORT_CYCLES()         sim_cycles()
+#define PORT_KEY_PRESSED()    sim_key_pressed()
 
 #include "shell.c"
 

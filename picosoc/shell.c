@@ -496,12 +496,61 @@ static int shcmd_format(int argc, char **argv)
 	return 0;
 }
 
-// Execute a file line by line as shell commands.
+// ---- run: execute a file line by line as shell commands ----
+//
+// Settings may be placed at the top of the file, one per line, before the
+// first command:
+//     loop=on     repeat the file until a key is pressed
+//     echo=on     print each command before it runs (default: off)
+// Nothing is printed for the commands themselves unless echo=on, and the
+// flash trace is switched off while the file runs.
+
+// Copy the line starting at 'pos' into 'line' and return the position
+// after it. Lines longer than the buffer are cut.
+static uint32_t fs_read_line(int slot, uint32_t pos, uint32_t len, char *line)
+{
+	int n = 0;
+
+	while (pos < len) {
+		char c = (char)pfs_byte(slot, pos++);
+
+		if (c == '\n')
+			break;
+		if (n < SHELL_LINE_MAX - 1)
+			line[n++] = c;
+	}
+	line[n] = 0;
+	return pos;
+}
+
+// If 'line' is "<name>=on" or "<name>=off", store 1 or 0 in *value and
+// return 1. Return 0 if the line is not this setting, -1 if the value is
+// neither on nor off.
+static int fs_setting(const char *line, const char *name, int *value)
+{
+	while (*name && *line == *name) {
+		line++;
+		name++;
+	}
+	if (*name || *line != '=')
+		return 0;
+	line++;
+	if (shell_streq(line, "on")) {
+		*value = 1;
+		return 1;
+	}
+	if (shell_streq(line, "off")) {
+		*value = 0;
+		return 1;
+	}
+	return -1;
+}
+
 static int shcmd_run(int argc, char **argv)
 {
 	char line[SHELL_LINE_MAX];
-	int slot, n = 0;
-	uint32_t len;
+	int slot, loop = 0, echo = 0, stop = 0, saved_debug;
+	uint32_t len, pos = 0, body;
 
 	if (argc != 2) {
 		io_puts("usage: run <name>\n");
@@ -516,27 +565,60 @@ static int shcmd_run(int argc, char **argv)
 		io_puts("run: cannot be nested\n");
 		return 0;
 	}
-	fs_running = 1;
 	len = pfs_size(slot);
 
-	for (uint32_t i = 0; i <= len; i++) {
-		char c = i < len ? (char)pfs_byte(slot, i) : '\n';
+	// Settings at the top of the file.
+	for (;;) {
+		uint32_t next = fs_read_line(slot, pos, len, line);
+		int r;
 
-		if (c != '\n') {
-			if (n < SHELL_LINE_MAX - 1)
-				line[n++] = c;
-			continue;
+		if (line[0]) {
+			r = fs_setting(line, "loop", &loop);
+			if (!r)
+				r = fs_setting(line, "echo", &echo);
+			if (r < 0) {
+				io_puts("run: use on or off: ");
+				io_puts(line);
+				putchar('\n');
+				return 0;
+			}
+			if (!r)
+				break;              // first command: settings end here
 		}
-		line[n] = 0;
-		n = 0;
-		if (!line[0])
-			continue;
-		io_puts("> ");
-		io_puts(line);
-		putchar('\n');
-		if (shell_exec(line))
-			break;                  // 'exit' inside a file stops the file
+		pos = next;
+		if (pos >= len)
+			break;
 	}
+	body = pos;
+
+	fs_running = 1;
+	saved_debug = flash_debug;
+	flash_debug = 0;
+	if (loop)
+		io_puts("looping - press any key to stop\n");
+
+	do {
+		for (pos = body; pos < len && !stop; ) {
+			pos = fs_read_line(slot, pos, len, line);
+			if (!line[0])
+				continue;
+			if (echo) {
+				io_puts("> ");
+				io_puts(line);
+				putchar('\n');
+			}
+			if (shell_exec(line))
+				stop = 1;           // 'exit' inside a file stops the file
+			else if (loop && PORT_KEY_PRESSED())
+				stop = 2;
+		}
+		if (loop && !stop && PORT_KEY_PRESSED())
+			stop = 2;
+	} while (loop && !stop);
+
+	if (stop == 2)
+		io_puts("stopped\n");
+	flash_debug = saved_debug;
 	fs_running = 0;
 	return 0;
 }

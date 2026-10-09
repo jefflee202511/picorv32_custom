@@ -39,6 +39,11 @@ void putchar(char c);
 #define reg_uart_data (*(volatile uint32_t*)0x02000008)
 #endif
 
+// True if a byte has arrived on the UART. The byte is consumed.
+#ifndef PORT_KEY_PRESSED
+#define PORT_KEY_PRESSED() ((int32_t)reg_uart_data != -1)
+#endif
+
 #ifndef reg_leds
 #define reg_leds (*(volatile uint32_t*)0x03000000)
 #endif
