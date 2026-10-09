@@ -2,6 +2,7 @@
 // shell.c : tiny command console + slot file system for PicoSoC firmware
 //
 // desc: AI generated code by claude code 2026. 10.10
+
 // Usage: in firmware.c, below putchar() and the reg_uart_data /
 // reg_leds definitions, add
 //     #include "shell.c"
@@ -13,6 +14,7 @@
 // To add a command: write   static int shcmd_xxx(int argc, char **argv)
 // and add one line to shell_cmds[] below. Return 1 to leave the shell.
 //
+
 // FILE SYSTEM
 //   FS_SLOTS fixed slots, one 4 KB flash sector each, starting at flash
 //   offset FS_BASE. A slot is:
