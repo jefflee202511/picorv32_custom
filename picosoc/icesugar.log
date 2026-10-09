@@ -1,0 +1,145 @@
+
+ /----------------------------------------------------------------------------\
+ |                                                                            |
+ |  yosys -- Yosys Open SYnthesis Suite                                       |
+ |                                                                            |
+ |  Copyright (C) 2012 - 2019  Clifford Wolf <clifford@clifford.at>           |
+ |                                                                            |
+ |  Permission to use, copy, modify, and/or distribute this software for any  |
+ |  purpose with or without fee is hereby granted, provided that the above    |
+ |  copyright notice and this permission notice appear in all copies.         |
+ |                                                                            |
+ |  THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES  |
+ |  WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF          |
+ |  MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR   |
+ |  ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES    |
+ |  WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN     |
+ |  ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF   |
+ |  OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.            |
+ |                                                                            |
+ \----------------------------------------------------------------------------/
+
+ Yosys 0.9 (git sha1 1979e0b)
+
+
+-- Parsing `icesugar.v' using frontend `verilog' --
+
+1. Executing Verilog-2005 frontend: icesugar.v
+Parsing Verilog input from `icesugar.v' to AST representation.
+Generating RTLIL representation for module `\icesugar'.
+Successfully finished Verilog frontend.
+
+-- Parsing `ice40up5k_spram.v' using frontend `verilog' --
+
+2. Executing Verilog-2005 frontend: ice40up5k_spram.v
+Parsing Verilog input from `ice40up5k_spram.v' to AST representation.
+Generating RTLIL representation for module `\ice40up5k_spram'.
+Successfully finished Verilog frontend.
+
+-- Parsing `spimemio.v' using frontend `verilog' --
+
+3. Executing Verilog-2005 frontend: spimemio.v
+Parsing Verilog input from `spimemio.v' to AST representation.
+Generating RTLIL representation for module `\spimemio'.
+Generating RTLIL representation for module `\spimemio_xfer'.
+Successfully finished Verilog frontend.
+
+-- Parsing `simpleuart.v' using frontend `verilog' --
+
+4. Executing Verilog-2005 frontend: simpleuart.v
+Parsing Verilog input from `simpleuart.v' to AST representation.
+Generating RTLIL representation for module `\simpleuart'.
+Successfully finished Verilog frontend.
+
+-- Parsing `picosoc.v' using frontend `verilog' --
+
+5. Executing Verilog-2005 frontend: picosoc.v
+Parsing Verilog input from `picosoc.v' to AST representation.
+Generating RTLIL representation for module `\picosoc'.
+Generating RTLIL representation for module `\picosoc_regs'.
+Generating RTLIL representation for module `\picosoc_mem'.
+Successfully finished Verilog frontend.
+
+-- Parsing `../picorv32.v' using frontend `verilog' --
+
+6. Executing Verilog-2005 frontend: ../picorv32.v
+Parsing Verilog input from `../picorv32.v' to AST representation.
+Generating RTLIL representation for module `\picorv32'.
+Generating RTLIL representation for module `\picorv32_regs'.
+Generating RTLIL representation for module `\picorv32_pcpi_mul'.
+Generating RTLIL representation for module `\picorv32_pcpi_fast_mul'.
+Generating RTLIL representation for module `\picorv32_pcpi_div'.
+Generating RTLIL representation for module `\picorv32_axi'.
+Generating RTLIL representation for module `\picorv32_axi_adapter'.
+Generating RTLIL representation for module `\picorv32_wb'.
+Successfully finished Verilog frontend.
+
+-- Running command `synth_ice40 -top icesugar -json icesugar.json' --
+
+7. Executing SYNTH_ICE40 pass.
+
+7.1. Executing Verilog-2005 frontend: /usr/bin/../share/yosys/ice40/cells_sim.v
+Parsing Verilog input from `/usr/bin/../share/yosys/ice40/cells_sim.v' to AST representation.
+Generating RTLIL representation for module `\SB_IO'.
+Generating RTLIL representation for module `\SB_GB_IO'.
+Generating RTLIL representation for module `\SB_GB'.
+Generating RTLIL representation for module `\SB_LUT4'.
+Generating RTLIL representation for module `\SB_CARRY'.
+Generating RTLIL representation for module `\SB_DFF'.
+Generating RTLIL representation for module `\SB_DFFE'.
+Generating RTLIL representation for module `\SB_DFFSR'.
+Generating RTLIL representation for module `\SB_DFFR'.
+Generating RTLIL representation for module `\SB_DFFSS'.
+Generating RTLIL representation for module `\SB_DFFS'.
+Generating RTLIL representation for module `\SB_DFFESR'.
+Generating RTLIL representation for module `\SB_DFFER'.
+Generating RTLIL representation for module `\SB_DFFESS'.
+Generating RTLIL representation for module `\SB_DFFES'.
+Generating RTLIL representation for module `\SB_DFFN'.
+Generating RTLIL representation for module `\SB_DFFNE'.
+Generating RTLIL representation for module `\SB_DFFNSR'.
+Generating RTLIL representation for module `\SB_DFFNR'.
+Generating RTLIL representation for module `\SB_DFFNSS'.
+Generating RTLIL representation for module `\SB_DFFNS'.
+Generating RTLIL representation for module `\SB_DFFNESR'.
+Generating RTLIL representation for module `\SB_DFFNER'.
+Generating RTLIL representation for module `\SB_DFFNESS'.
+Generating RTLIL representation for module `\SB_DFFNES'.
+Generating RTLIL representation for module `\SB_RAM40_4K'.
+Generating RTLIL representation for module `\SB_RAM40_4KNR'.
+Generating RTLIL representation for module `\SB_RAM40_4KNW'.
+Generating RTLIL representation for module `\SB_RAM40_4KNRNW'.
+Generating RTLIL representation for module `\ICESTORM_LC'.
+Generating RTLIL representation for module `\SB_PLL40_CORE'.
+Generating RTLIL representation for module `\SB_PLL40_PAD'.
+Generating RTLIL representation for module `\SB_PLL40_2_PAD'.
+Generating RTLIL representation for module `\SB_PLL40_2F_CORE'.
+Generating RTLIL representation for module `\SB_PLL40_2F_PAD'.
+Generating RTLIL representation for module `\SB_WARMBOOT'.
+Generating RTLIL representation for module `\SB_SPRAM256KA'.
+Generating RTLIL representation for module `\SB_HFOSC'.
+Generating RTLIL representation for module `\SB_LFOSC'.
+Generating RTLIL representation for module `\SB_RGBA_DRV'.
+Generating RTLIL representation for module `\SB_LED_DRV_CUR'.
+Generating RTLIL representation for module `\SB_RGB_DRV'.
+Generating RTLIL representation for module `\SB_I2C'.
+Generating RTLIL representation for module `\SB_SPI'.
+Generating RTLIL representation for module `\SB_LEDDA_IP'.
+Generating RTLIL representation for module `\SB_FILTER_50NS'.
+Generating RTLIL representation for module `\SB_IO_I3C'.
+Generating RTLIL representation for module `\SB_IO_OD'.
+Generating RTLIL representation for module `\SB_MAC16'.
+Successfully finished Verilog frontend.
+
+7.2. Executing HIERARCHY pass (managing design hierarchy).
+
+7.2.1. Analyzing design hierarchy..
+Top module:  \icesugar
+Used module:     \picosoc
+Used module:         \ice40up5k_spram
+Used module:         \simpleuart
+Used module:         \spimemio
+Used module:             \spimemio_xfer
+Used module:         \picorv32
+Used module:             \picosoc_regs
+ERROR: Module `picosoc' referenced in module `icesugar' in cell `soc' does not have a parameter named 'ENABLE_MULDIV'.
