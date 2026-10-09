@@ -68,6 +68,24 @@ void putchar(char c);
 #define PORT_REBOOT() (((void (*)(void))0x00100000u)())
 #endif
 
+// CPU cycle counter, used for delays. PicoRV32 counts clock cycles in the
+// rdcycle register (ENABLE_COUNTERS, on by default; the benchmark in
+// firmware.c uses it too).
+#ifndef PORT_CYCLES
+static uint32_t port_cycles(void)
+{
+	uint32_t c;
+	__asm__ volatile ("rdcycle %0" : "=r"(c));
+	return c;
+}
+#define PORT_CYCLES() port_cycles()
+#endif
+
+// Clock cycles per millisecond: 12 MHz on iCEBreaker.
+#ifndef PORT_CYCLES_PER_MS
+#define PORT_CYCLES_PER_MS 12000u
+#endif
+
 // Marks a function that must run from RAM. The section is part of .data,
 // which start.s copies from flash to RAM at boot.
 #ifndef PORT_RAMFUNC
@@ -87,6 +105,7 @@ char io_getc(void);                         // blocks until a byte arrives
 void io_puts(const char *s);
 void io_hex(uint32_t v, int digits);        // fixed number of hex digits
 void io_dec(uint32_t v);                    // decimal, no leading zeros
+void io_delay_ms(uint32_t ms);              // wait, timed by the CPU cycle counter
 
 // --------------------------------------------------------
 // 2. TEXT OUTPUT - implementation
@@ -131,6 +150,19 @@ void io_dec(uint32_t v)
 			putchar(d);
 			started = 1;
 		}
+	}
+}
+
+// Wait 'ms' milliseconds. Each millisecond is measured against the cycle
+// counter from a running target time, so the error does not add up.
+void io_delay_ms(uint32_t ms)
+{
+	uint32_t target = PORT_CYCLES();
+
+	while (ms--) {
+		target += PORT_CYCLES_PER_MS;
+		while ((int32_t)(PORT_CYCLES() - target) < 0)
+			;
 	}
 }
 

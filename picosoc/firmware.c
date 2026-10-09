@@ -18,6 +18,8 @@
 //       https://github.com/mpaland/printf
 // --------------------------------------------------------
  
+
+
 #define PRINTF
 #include <stdint.h>
 #include <stdbool.h>
@@ -841,6 +843,7 @@ void cmd_printf()
     uart_printf("dec=%d neg=%d hex=0x%x str=%s chr=%c\n", 12345, -42, 0xbeef, "pico", 'A');
 }
 
+#include "shell.c"
 int main(void)
 {
 
@@ -903,6 +906,7 @@ int main(void)
 		print("   [S] Print SPI state\n");
 		print("   [e] Echo UART\n");
 		print("   [f] printf function test \n");
+                print("   [c] Command shell\n");
 		print("\n");
 
 		for (int rep = 10; rep > 0; rep--)
@@ -953,6 +957,9 @@ int main(void)
 				break;
 			case 'f':
 				cmd_printf();
+				break;
+			case 'c':
+				shell_run();
 				break;
 			default:
 				continue;

@@ -23,6 +23,7 @@
 //       0x9f read JEDEC id
 //   - memory-mapped flash reads (PORT_FLASH_BYTE)
 //   - reg_uart_data / putchar on the terminal
+//   - the CPU cycle counter (rdcycle), from the PC clock, for delay
 //   - peek/poke: LED register 0x03000000 and UART divider 0x02000004;
 //     every other address reads 0 and ignores writes
 //
@@ -46,6 +47,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <termios.h>
+#include <time.h>
 
 #define SIM_BASE   0x00200000u          // must match PFS_BASE in picofs.c
 #define SIM_SIZE   (8 * 4096)           // must match PFS_SLOTS * PFS_SECTOR
@@ -146,6 +148,16 @@ static int32_t sim_uart_read(void)
 	if (read(STDIN_FILENO, &c, 1) != 1)
 		exit(0);
 	return c;
+}
+
+// The CPU cycle counter, derived from the PC clock at 12 MHz, so 'delay'
+// takes the same time as on the board.
+static uint32_t sim_cycles(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (uint32_t)(((uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec) * 12ull / 1000ull);
 }
 
 // 'reboot' restarts the firmware on the board. Here it ends the simulator;
@@ -356,6 +368,7 @@ static uint8_t sim_spi_rd(void)
 #define PORT_RAMFUNC                    /* a PC cannot run code from .data */
 #define PORT_IN_RAM(fn)       1
 #define PORT_REBOOT()         sim_reboot()
+#define PORT_CYCLES()         sim_cycles()
 
 #include "shell.c"
 
