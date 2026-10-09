@@ -1,20 +1,17 @@
 // --------------------------------------------------------
 // shell.c : tiny command console + slot file system for PicoSoC firmware
 //
-// desc: AI generated code by claude code 2026. 10.10
-
 // Usage: in firmware.c, below putchar() and the reg_uart_data /
 // reg_leds definitions, add
 //     #include "shell.c"
 // and call shell_run() from a menu entry.
 //
 // Needs no libc, no libgcc, no mul/div (works with -nostdlib, rv32ic).
-// Uses putchar(), reg_uart_data, reg_leds and flashio() from firmware.c.
+// Uses putchar(), reg_uart_data and reg_leds from firmware.c.
 //
 // To add a command: write   static int shcmd_xxx(int argc, char **argv)
 // and add one line to shell_cmds[] below. Return 1 to leave the shell.
 //
-
 // FILE SYSTEM
 //   FS_SLOTS fixed slots, one 4 KB flash sector each, starting at flash
 //   offset FS_BASE. A slot is:
@@ -22,8 +19,9 @@
 //     bytes 4..7   data length
 //     bytes 8..15  file name, NUL terminated (max 7 characters)
 //     bytes 16..   data (max 4080 bytes)
-//   Reading uses the memory-mapped flash. Writing goes through flashio()
-//   (sector erase 0x20, page program 0x02), which runs from RAM.
+//   Reading uses the memory-mapped flash. Writing (sector erase 0x20, page
+//   program 0x02) is done by fs_ram_cmd(), which runs from RAM and does not
+//   return until the flash is ready again.
 //
 //   !! FS_BASE must not overlap the bitstream (flash offset 0) or the
 //   !! firmware (flash offset 1 MB on iCEBreaker).
@@ -49,7 +47,27 @@
 #define FS_FLASH_BYTE(addr) (*(volatile uint8_t*)(addr))
 #endif
 
-void flashio(uint8_t *data, int len, uint8_t wrencmd);
+// Code that talks to the flash while it is busy must run from RAM.
+#ifndef FS_RAMFUNC
+#define FS_RAMFUNC __attribute__((noinline, section(".data.pfs_ram")))
+#endif
+
+// spimemio configuration register (0x02000000), accessed byte by byte:
+//   byte 0: bit 5 = CS, bit 4 = clock, bits 3..0 = IO3..IO0
+//   byte 1: bits 3..0 = output enable for IO3..IO0
+//   byte 3: bit 7 = memory-mapped mode (0 = manual mode)
+#ifndef FS_SPI_WR
+#define FS_SPI_WR(off, val) (((volatile uint8_t*)0x02000000)[off] = (val))
+#define FS_SPI_RD()         (((volatile uint8_t*)0x02000000)[0])
+#endif
+
+#define FS_POLL_MAX 200000      // status polls before giving up
+
+// Safety check used before every flash command: the RAM routines must really
+// have been linked into RAM (addresses below the end of RAM, 128 KB).
+#ifndef FS_RAM_OK
+#define FS_RAM_OK() ((uint32_t)fs_ram_cmd < 0x00020000u && (uint32_t)fs_ram_read < 0x00020000u)
+#endif
 
 static int shell_exec(char *line);
 
@@ -183,6 +201,9 @@ static int shell_split(char *line, char **argv, int max)
 // ---------------- flash file system ----------------
 
 static uint8_t fs_buf[FS_SECTOR];    // RAM image of one slot (header + data)
+static int fs_debug = 1;             // trace every flash operation ('fsdbg' toggles)
+static int fs_dbg_status;            // last status byte read by fs_ram_cmd()
+static int fs_dbg_polls;             // status polls used by the last fs_ram_cmd()
 static int fs_running;               // set while 'run' executes a file
 
 static uint32_t fs_slot_addr(int slot)
@@ -241,34 +262,158 @@ static int fs_find_free(void)
 	return -1;
 }
 
-// Wait until the flash has finished an erase or program operation.
-static void fs_wait(void)
+// Send one erase or program command and wait until the flash has finished it.
+//
+// This function runs from RAM (it is placed in .data, which start.s copies
+// to RAM at boot). It has to: while the flash is erasing or programming it
+// does not answer read commands, so the CPU cannot fetch code from it.
+// Returning to flash-resident code before the flash is ready hangs the CPU.
+//
+// Rules for this function: no calls to other functions, no string
+// literals, no switch statements - anything that would touch the flash.
+//
+// Sequence: manual SPI mode -> write enable (0x06) -> command ->
+// poll status (0x05) until BUSY clears -> memory-mapped mode.
+// Returns 1 on success, 0 if the flash stayed busy (timeout).
+FS_RAMFUNC static int fs_ram_cmd(const uint8_t *data, int len)
 {
-	uint8_t b[2];
+	int32_t polls = FS_POLL_MAX;
+	int status;
 
-	do {
-		b[0] = 0x05;            // read status register 1
-		b[1] = 0;
-		flashio(b, 2, 0);
-	} while (b[1] & 1);         // bit 0 = BUSY
+	fs_dbg_polls = 0;
+
+	FS_SPI_WR(1, 0x01);                 // IO0 is an output
+	FS_SPI_WR(0, 0x20);                 // CS high, clock low
+	FS_SPI_WR(3, 0x00);                 // manual (bit-bang) mode
+
+	for (int i = 7; i >= 0; i--) {      // write enable
+		int bit = (0x06 >> i) & 1;
+		FS_SPI_WR(0, bit);
+		FS_SPI_WR(0, bit | 0x10);
+	}
+	FS_SPI_WR(0, 0x00);
+	FS_SPI_WR(0, 0x20);
+
+	for (int n = 0; n < len; n++) {     // the command itself
+		for (int i = 7; i >= 0; i--) {
+			int bit = (data[n] >> i) & 1;
+			FS_SPI_WR(0, bit);
+			FS_SPI_WR(0, bit | 0x10);
+		}
+	}
+	FS_SPI_WR(0, 0x00);
+	FS_SPI_WR(0, 0x20);                 // CS high: erase / program starts
+
+	do {                                // read status register 1
+		status = 0;
+		for (int i = 7; i >= 0; i--) {
+			int bit = (0x05 >> i) & 1;
+			FS_SPI_WR(0, bit);
+			FS_SPI_WR(0, bit | 0x10);
+		}
+		for (int i = 0; i < 8; i++) {
+			FS_SPI_WR(0, 0x00);
+			FS_SPI_WR(0, 0x10);
+			status = (status << 1) | ((FS_SPI_RD() >> 1) & 1);   // IO1 = MISO
+		}
+		FS_SPI_WR(0, 0x00);
+		FS_SPI_WR(0, 0x20);
+		fs_dbg_polls++;
+	} while ((status & 1) && --polls > 0);      // bit 0 = BUSY
+
+	fs_dbg_status = status;
+	FS_SPI_WR(3, 0x80);                 // back to memory-mapped mode
+	return (status & 1) ? 0 : 1;
 }
 
-static void fs_erase(uint32_t addr)
+// Send a one-byte read command and read 'n' reply bytes. Changes nothing in
+// the flash. Runs from RAM for the same reason as fs_ram_cmd().
+FS_RAMFUNC static void fs_ram_read(int cmd, uint8_t *out, int n)
+{
+	FS_SPI_WR(1, 0x01);
+	FS_SPI_WR(0, 0x20);
+	FS_SPI_WR(3, 0x00);
+
+	for (int i = 7; i >= 0; i--) {
+		int bit = (cmd >> i) & 1;
+		FS_SPI_WR(0, bit);
+		FS_SPI_WR(0, bit | 0x10);
+	}
+	for (int k = 0; k < n; k++) {
+		int v = 0;
+		for (int i = 0; i < 8; i++) {
+			FS_SPI_WR(0, 0x00);
+			FS_SPI_WR(0, 0x10);
+			v = (v << 1) | ((FS_SPI_RD() >> 1) & 1);
+		}
+		out[k] = v;
+	}
+	FS_SPI_WR(0, 0x00);
+	FS_SPI_WR(0, 0x20);
+	FS_SPI_WR(3, 0x80);
+}
+
+// Returns 1 if the RAM routines are usable; prints why not otherwise.
+static int fs_ram_check(void)
+{
+	if (FS_RAM_OK())
+		return 1;
+	shell_puts("[fs] flash routines are not in RAM - refusing to touch the flash\n");
+	return 0;
+}
+
+// Debug trace. Each line is printed in two halves: the first half before
+// the flash operation, the second after it. If the board hangs, the last
+// thing on the terminal shows which operation it was in.
+static void fs_trace_begin(const char *what, uint32_t addr, uint32_t n)
+{
+	if (!fs_debug)
+		return;
+	shell_puts("[fs] ");
+	shell_puts(what);
+	shell_puts(" 0x");
+	shell_hex(addr, 6);
+	if (n) {
+		shell_puts(" +");
+		shell_dec(n);
+	}
+	shell_puts(" ... ");
+}
+
+static void fs_trace_end(int ok)
+{
+	if (!fs_debug)
+		return;
+	shell_puts(ok ? "ok" : "TIMEOUT");
+	shell_puts(" (status=");
+	shell_hex(fs_dbg_status, 2);
+	shell_puts(" polls=");
+	shell_dec(fs_dbg_polls);
+	shell_puts(")\n");
+}
+
+static int fs_erase(uint32_t addr)
 {
 	uint8_t b[4];
+	int ok;
 
 	b[0] = 0x20;                // 4 KB sector erase
 	b[1] = addr >> 16;
 	b[2] = addr >> 8;
 	b[3] = addr;
-	flashio(b, 4, 0x06);        // 0x06 = write enable
-	fs_wait();
+	if (!fs_ram_check())
+		return 0;
+	fs_trace_begin("erase", addr, 0);
+	ok = fs_ram_cmd(b, 4);
+	fs_trace_end(ok);
+	return ok;
 }
 
 // Program up to 256 bytes; must not cross a 256-byte page boundary.
-static void fs_program(uint32_t addr, const uint8_t *src, int n)
+static int fs_program(uint32_t addr, const uint8_t *src, int n)
 {
 	uint8_t b[4 + 256];
+	int ok;
 
 	b[0] = 0x02;                // page program
 	b[1] = addr >> 16;
@@ -276,11 +421,16 @@ static void fs_program(uint32_t addr, const uint8_t *src, int n)
 	b[3] = addr;
 	for (int i = 0; i < n; i++)
 		b[4 + i] = src[i];
-	flashio(b, 4 + n, 0x06);
-	fs_wait();
+	if (!fs_ram_check())
+		return 0;
+	fs_trace_begin("program", addr, n);
+	ok = fs_ram_cmd(b, 4 + n);
+	fs_trace_end(ok);
+	return ok;
 }
 
-// Write fs_buf (data already at fs_buf + FS_HDR) to a slot. Returns 1 if verified.
+// Write fs_buf (data already at fs_buf + FS_HDR) to a slot.
+// Returns 1 if verified, 0 if the read-back differs, -1 on flash timeout.
 static int fs_store(int slot, const char *name, uint32_t len)
 {
 	uint32_t base = fs_slot_addr(slot);
@@ -294,16 +444,34 @@ static int fs_store(int slot, const char *name, uint32_t len)
 	for (; i < FS_NAME_MAX; i++)
 		fs_buf[8 + i] = 0;
 
-	fs_erase(base);
+	if (!fs_erase(base))
+		return -1;
 	for (uint32_t off = 0; off < total; off += 256) {
 		uint32_t n = total - off;
 		if (n > 256) n = 256;
-		fs_program(base + off, fs_buf + off, n);
+		if (!fs_program(base + off, fs_buf + off, n))
+			return -1;
 	}
 
-	for (uint32_t off = 0; off < total; off++)
-		if (FS_FLASH_BYTE(base + off) != fs_buf[off])
+	for (uint32_t off = 0; off < total; off++) {
+		if (FS_FLASH_BYTE(base + off) != fs_buf[off]) {
+			if (fs_debug) {
+				shell_puts("[fs] verify: mismatch at 0x");
+				shell_hex(base + off, 6);
+				shell_puts(" wrote ");
+				shell_hex(fs_buf[off], 2);
+				shell_puts(" read ");
+				shell_hex(FS_FLASH_BYTE(base + off), 2);
+				putchar('\n');
+			}
 			return 0;
+		}
+	}
+	if (fs_debug) {
+		shell_puts("[fs] verify ");
+		shell_dec(total);
+		shell_puts(" bytes ok\n");
+	}
 	return 1;
 }
 
@@ -366,12 +534,13 @@ static int shcmd_save(int argc, char **argv)
 		fs_buf[FS_HDR + len++] = '\n';
 	}
 
-	if (fs_store(slot, argv[1], len)) {
+	slot = fs_store(slot, argv[1], len);
+	if (slot > 0) {
 		shell_puts("saved ");
 		shell_dec(len);
 		shell_puts(" bytes\n");
 	} else {
-		shell_puts("verify failed\n");
+		shell_puts(slot < 0 ? "flash timeout\n" : "verify failed\n");
 	}
 	return 0;
 }
@@ -400,7 +569,8 @@ static int shcmd_rm(int argc, char **argv)
 		shell_puts(argc != 2 ? "usage: rm <name>\n" : "no such file\n");
 		return 0;
 	}
-	fs_erase(fs_slot_addr(slot));
+	if (!fs_erase(fs_slot_addr(slot)))
+		shell_puts("flash timeout\n");
 	return 0;
 }
 
@@ -415,9 +585,41 @@ static int shcmd_format(int argc, char **argv)
 		shell_puts("cancelled\n");
 		return 0;
 	}
-	for (int slot = 0; slot < FS_SLOTS; slot++)
-		fs_erase(fs_slot_addr(slot));
+	for (int slot = 0; slot < FS_SLOTS; slot++) {
+		if (!fs_erase(fs_slot_addr(slot))) {
+			shell_puts("flash timeout\n");
+			return 0;
+		}
+	}
 	shell_puts("formatted\n");
+	return 0;
+}
+
+// Read the flash ID and status through the RAM routine. Changes nothing:
+// use it to check the RAM round trip before trying a write.
+static int shcmd_flash(int argc, char **argv)
+{
+	uint8_t id[3];
+	uint8_t st[1];
+
+	if (!fs_ram_check())
+		return 0;
+	shell_puts("reading id ... ");
+	fs_ram_read(0x9f, id, 3);
+	shell_hex(id[0], 2); putchar(' ');
+	shell_hex(id[1], 2); putchar(' ');
+	shell_hex(id[2], 2); putchar('\n');
+	shell_puts("reading status ... ");
+	fs_ram_read(0x05, st, 1);
+	shell_hex(st[0], 2);
+	putchar('\n');
+	return 0;
+}
+
+static int shcmd_fsdbg(int argc, char **argv)
+{
+	fs_debug = !fs_debug;
+	shell_puts(fs_debug ? "flash trace on\n" : "flash trace off\n");
 	return 0;
 }
 
@@ -552,6 +754,7 @@ struct shell_cmd {
 	const char *name;
 	int (*fn)(int argc, char **argv);
 	const char *help;
+	uint32_t pad;       // keeps the entry at 16 bytes: indexing needs no multiply
 };
 
 static const struct shell_cmd shell_cmds[] = {
@@ -567,6 +770,8 @@ static const struct shell_cmd shell_cmds[] = {
 	{ "rm",   shcmd_rm,   "rm <name>                delete a file" },
 	{ "run",  shcmd_run,  "run <name>               execute a file as commands" },
 	{ "format", shcmd_format, "format                   erase all files" },
+	{ "flash", shcmd_flash, "flash                    read flash id and status (no write)" },
+	{ "fsdbg", shcmd_fsdbg, "fsdbg                    flash trace on/off" },
 	{ "exit", shcmd_exit, "exit                     return to the menu" },
 };
 
