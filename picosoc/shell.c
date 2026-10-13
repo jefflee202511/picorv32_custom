@@ -3,8 +3,9 @@
 //
 // Usage: in firmware.c, just above main(), add
 //     #include "shell.c"
-// and call shell_run() from a menu entry. picofs.c and pico_vi.c must be
-// in the same directory; this file includes them.
+// and call shell_run() from a menu entry. picofs.c, pico_vi.c,
+// pico_snake.c and pico_tetris.c must be in the same directory; this
+// file includes them.
 //
 // Sections:
 //   1. shell core        line editor, parser, dispatcher
@@ -637,6 +638,10 @@ const struct shell_cmd shell_fs_cmds[] = {
 	{ 0, 0, 0 }
 };
 
+// The games: define shell_snake_cmds[] and shell_tetris_cmds[].
+#include "pico_snake.c"
+#include "pico_tetris.c"
+
 // --------------------------------------------------------
 // 5. COMMAND LIST : which command tables are part of the shell
 //
@@ -647,5 +652,7 @@ const struct shell_cmd *const shell_groups[] = {
 	shell_base_cmds,
 	shell_flash_cmds,
 	shell_fs_cmds,
+	shell_snake_cmds,
+	shell_tetris_cmds,
 	0
 };
