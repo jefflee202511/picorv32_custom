@@ -29,6 +29,18 @@
 
 #include <stdint.h>
 
+#include <stddef.h>
+
+size_t pico_strlen(const char *s) {
+    size_t length = 0;
+
+    while (s[length] != '\0') {
+        length++;
+    }
+
+    return length;
+}
+
 // Character output: putchar() from firmware.c ('\n' becomes "\r\n").
 #ifndef putchar
 void putchar(char c);
@@ -134,8 +146,23 @@ char io_getc(void)
 
 void io_puts(const char *s)
 {
+	int len = pico_strlen(s);
+	int count = 0;
 	while (*s)
-		putchar(*(s++));
+	{
+		char temp = *s;
+		if (((temp == '\"' || temp == '\'') && count == 0 ) ||
+		((temp == '\"' || temp == '\'') &&  count == (len -1) ))
+		{
+		}else
+		{
+			putchar(temp);
+		}
+
+		s++;
+		count ++;
+
+	}
 }
 
 void io_hex(uint32_t v, int digits)
