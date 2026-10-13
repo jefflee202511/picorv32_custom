@@ -206,10 +206,14 @@ static int shcmd_help(int argc, char **argv)
 
 static int shcmd_echo(int argc, char **argv)
 {
-	for (int i = 1; i < argc; i++) {
-		if (i > 1) putchar(' ');
+	for (int i = 1; i < argc; i++) 
+	{
+		if ( i > 1 ) 
+			putchar(' ');
+		
 		io_puts(argv[i]);
 	}
+
 	putchar('\n');
 	return 0;
 }
@@ -536,11 +540,11 @@ static int fs_setting(const char *line, const char *name, int *value)
 	if (*name || *line != '=')
 		return 0;
 	line++;
-	if (shell_streq(line, "on")) {
+	if (shell_streq(line, "on")||shell_streq(line, "ON") ) {
 		*value = 1;
 		return 1;
 	}
-	if (shell_streq(line, "off")) {
+	if (shell_streq(line, "off")||shell_streq(line, "OFF")) {
 		*value = 0;
 		return 1;
 	}
